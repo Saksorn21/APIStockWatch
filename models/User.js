@@ -4,6 +4,7 @@ const schema = new mongoose.Schema({
   password: String,
   otp: String,
   otpExpires: Date,
+  isVerified: { type: Boolean, default: false},
   resetToken: String,
   resetExpires: Date,
   googleId: String

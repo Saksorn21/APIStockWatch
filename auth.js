@@ -2,7 +2,7 @@ import express from "express";
 import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
 import { User } from "./models/User.js";
-import { sendOTP, sendReset } from "./mail.js";
+import { sendOTP,generateOTP, resetOTP , sendReset } from "./mail.js";
 
 const router = express.Router();
 router.get("/me", (req, res) => {
@@ -23,7 +23,7 @@ router.post("/register", async (req, res) => {
   const { email, password } = req.body;
   let user = await User.findOne({ email });
   if (user) return res.status(400).json({ error: "User exists" });
-  const otp = Math.floor(100000 + Math.random() * 900000).toString();
+  const otp = generateOTP()
   const hashed = await bcrypt.hash(password, 10);
   const expires = new Date(Date.now() + 5 * 60 * 1000);
   user = await User.create({
@@ -39,16 +39,42 @@ router.post("/register", async (req, res) => {
 // Verify OTP after register
 router.post("/verify-otp", async (req, res) => {
   const { email, otp } = req.body;
+
   const user = await User.findOne({ email });
-  if (!user || user.otp !== otp || user.otpExpires < Date.now())
+  if (!user) return res.status(400).json({ error: "User not found" });
+
+  if (!user.otp || user.otp !== otp || user.otpExpires < Date.now()) {
     return res.status(400).json({ error: "Invalid or expired OTP" });
+  }
+
+  // OTP ถูกต้อง → เคลียร์ OTP
   user.otp = null;
   user.otpExpires = null;
+  user.isVerified = true; // เสริม: ตั้ง flag ว่ายืนยันแล้ว
   await user.save();
-  res.json({ message: "Registration complete" });
+
+  res.json({ message: "OTP verified. Registration complete." });
 });
+router.post ("/resend-otp", async (req, res) => {
+  const { email } = req.body;
 
+  const user = await User.findOne({ email });
+  if (!user) return res.status(400).json({ error: "User not found" });
 
+  // สร้าง OTP ใหม่
+  const otp = generateOTP();
+  const expires = Date.now() + 10 * 60 * 1000
+  user.otp = otp;
+  user.otpExpires = expires;
+  await user.save();
+  try {
+    console.info("[POST] /resend-otp hit")
+    await transporter.sendMail(mailOptions);
+    res.json({ message: "OTP resent" });
+  } catch (err) {
+    res.status(500).json({ error: "Failed to send OTP" });
+  }
+})
 // Login normal
 router.post("/login", async (req, res) => {
   const { email, password } = req.body;
@@ -67,7 +93,15 @@ router.post("/login", async (req, res) => {
   });
   res.json({ message: "Logged in" });
 });
-
+// Logout route
+router.post("/logout", (req, res) => {
+  res.clearCookie("token", {
+    httpOnly: true,
+    secure: true,
+    sameSite: "lax",
+  });
+  res.json({ message: "Logged out" });
+});
 // Request password reset
 router.post("/request-reset", async (req, res) => {
   const { email } = req.body;
