@@ -12,7 +12,14 @@ export const mailOptions = (to, otp) => {return {
   from: '"PortSnap" <no-reply@portsnap.com>',
   to,
   subject: "Your OTP Code",
-  text: `Your OTP is ${otp}. It expires in 10 minutes.`,
+  html: `
+    <p>Your OTP is:</p>
+    <p><strong>${otp}</strong></p>
+    <form>
+      <input type="text" name="otp" autocomplete="one-time-code" value="${otp}" readonly style="opacity:0;position:absolute;left:-9999px;">
+    </form>
+    <p>This code will expire in 10 minutes.</p>
+  `,
 }}
 export const generateOTP = () => Math.floor(100000 + Math.random() * 900000).toString();
 export async function sendOTP(to, otp) {
