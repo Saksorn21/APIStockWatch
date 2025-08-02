@@ -6,17 +6,18 @@ import { sendOTP, sendReset } from "./mail.js";
 
 const router = express.Router();
 router.get("/me", (req, res) => {
+  console.log("🔥 [GET] /me hit"); // Log นี้จะช่วย debug
   const token = req.cookies.token;
   if (!token) return res.status(401).json({ message: "Unauthorized" });
 
   try {
     const user = jwt.verify(token, process.env.JWT_SECRET);
-    res.json({ user }); // ✅ ส่งข้อมูล user กลับ
+    console.log("User verified:", user);
+    res.json({ user }); // ✅ ต้องมี response กลับ
   } catch (err) {
     res.status(401).json({ message: "Invalid token" });
   }
 });
-
 // Register + OTP
 router.post("/register", async (req, res) => {
   const { email, password } = req.body;
