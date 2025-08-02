@@ -69,7 +69,7 @@ router.post ("/resend-otp", async (req, res) => {
   await user.save();
   try {
     console.info("[POST] /resend-otp hit")
-    await transporter.sendMail(resetOTP(email, otp));
+    await resetOTP(email, otp);
     res.json({ message: "OTP resent" });
   } catch (err) {
     console.error(err)
