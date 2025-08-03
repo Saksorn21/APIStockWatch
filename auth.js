@@ -1,9 +1,5 @@
 import express from "express";
-import bcrypt from "bcryptjs";
-import jwt from "jsonwebtoken";
 import { User } from "./models/User.js";
-import ResetLink from "./models/ResetLink.js"
-import { sendOTP,generateOTP, resetOTP , sendReset, sendEmail } from "./mail.js";
 import { requireAuth, requireAdmin, validateBody, otpLimiter, loginLimiter } from "./middlewares/index.js";
 import { adminUnLocked, adminUpdateRole, adminDeleteUser } from "./controllers/adminController.js"
 import { changePassword, getResetToken, requestResetPassword, resetPassword, } from "./controllers/passwordController.js"
@@ -35,7 +31,7 @@ router.get('/users',  async (req, res) => {
 router.delete("/delete-me", requireAuth, deleteMe);
 
 
-router.get("/me", requireAuth, getMeo);
+router.get("/me", requireAuth, getMe);
 // Register + OTP
 router.post("/register", requireAuth, authRegister);
 // Login normal
