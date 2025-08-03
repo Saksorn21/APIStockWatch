@@ -7,8 +7,8 @@ export const getResetToken = async (req, res) => {
     const { uuid } = req.query;
     const entry = await ResetLink.findOne({ uuid });
 
-    if (!entry) return res.status(400).json({ error: "Invalid or expired reset link" }
-    res.json({ token: entry.token });
+    if (!entry) return res.status(400).json({ error: "Invalid or expired reset link" })
+    res.json({ token: entry.token })
   }
                                             
 export const requestResetPassword = async (req, res) => {
