@@ -24,6 +24,13 @@ export const mailOptions = (to, otp) => {
   `,
   };
 };
+export const sendEmail = async (to, options) => {
+  await transporter.sendMail({
+      from: '"PortSnap" <no-reply@portsnap.com>',
+      to,
+      ...options
+  })
+}
 export const generateOTP = () =>
   Math.floor(100000 + Math.random() * 900000).toString();
 export async function sendOTP(to, otp) {
