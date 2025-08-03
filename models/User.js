@@ -38,6 +38,7 @@ const schema = new mongoose.Schema({
   },
   resetToken: String,
   resetExpires: Date,
+  resetRequests: { type: [Date], default: [] },
   googleId: String,
   lastPasswordChange: {
     type: Date,

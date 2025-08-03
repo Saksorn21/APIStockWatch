@@ -59,19 +59,10 @@ router.patch("/admin/update-role/:id", requireAdmin, async (req, res) => {
 
 router.get("/me", requireAuth, async (req, res) => {
   console.log("🔥 [GET] /me hit");
-  const token = req.cookies.token;
-  if (!token) return res.status(401).json({ message: "Unauthorized" });
-
-  try {
-    const decoded = jwt.verify(token, process.env.JWT_SECRET);
-    const user = await User.findById(decoded.id).select("-password -otp -otpExpires"); // ไม่ส่งข้อมูลลับ
-
+     const user = await User.findById(req.user.id).select("-password -otp -otpExpires");
     if (!user) return res.status(404).json({ message: "User not found" });
 
-    res.json({ user }); // ส่งข้อมูลจริง เช่น email, username
-  } catch (err) {
-    res.status(401).json({ message: "Invalid token" });
-  }
+    res.json({ user }); 
 });
 // Register + OTP
 router.post("/register", async (req, res) => {
@@ -206,20 +197,51 @@ router.post("/logout", (req, res) => {
   });
   res.json({ message: "Logged out" });
 });
+router.get("/get-reset-token", async (req, res) => {
+  const { uuid } = req.query;
+  const entry = await ResetLink.findOne({ uuid });
+
+  if (!entry) return res.status(400).json({ error: "Invalid or expired reset link" });
+
+  res.json({ token: entry.token });
+});
 // Request password reset
 router.post("/request-reset", async (req, res) => {
   const { email } = req.body;
   const user = await User.findOne({ email });
-  if (!user) return res.json({ message: "If user exists, email sent" });
-  const token = jwt.sign({ id: user._id }, process.env.JWT_SECRET, {
+  if (!user) {
+    console.log("Password reset requested for unknown email:", email);
+    return res.json({ message: "If user exists, email sent" });
+  }
+  const oneDayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
+  user.resetRequests = user.resetRequests.filter(d => d > oneDayAgo);
+
+  if (user.resetRequests.length >= 5) {
+    return res.status(429).json({ message: "Too many reset requests today" });
+  }
+
+  user.resetRequests.push(new Date());
+  const token = jwt.sign({ id: user._id }, process.env.JWT_RESET_SECRET, {
     expiresIn: "15m",
   });
-  user.resetToken = token;
-  user.resetExpires = new Date(Date.now() + 15 * 60 * 1000);
-  await user.save();
-  const link = `${process.env.FRONTEND_URL}/reset-password?token=${token}`;
-  await sendReset(email, link);
-  res.json({ message: "Reset email sent" });
+  const uuid = crypto.randomUUID();
+  const expires = new Date(Date.now() + 15 * 60 * 1000);
+
+  // Save to DB
+  await ResetLink.create({ uuid, token, expiresAt: expires });
+
+  const frontendURL = process.env.FRONTEND_URL.replace(/\/$/, "");
+  const link = `${frontendURL}/reset/${uuid}`;
+  const html = `
+    <h2>🔑 Reset Your Password</h2>
+    <p>Click below to reset:</p>
+    <a href="${link}">Reset Password</a>
+    <p>This link expires in 15 minutes.</p>
+  `;
+  await sendEmail(user.email, {
+    subject: "Reset Your Password",
+    html,
+  });
 });
 
 // Perform reset
@@ -228,14 +250,36 @@ router.post("/reset-password", async (req, res) => {
   try {
     const decoded = jwt.verify(token, process.env.JWT_SECRET);
     const user = await User.findById(decoded.id);
-    if (!user || user.resetToken !== token || user.resetExpires < Date.now())
-      throw Error();
+    if (!user) {
+      return res.status(400).json({ error: "User not found" });
+    }
+
+    if (user.resetToken !== token) {
+      return res.status(400).json({ error: "Invalid token" });
+    }
+
+    if (user.resetExpires < Date.now()) {
+      return res.status(400).json({ error: "Token expired" });
+    }
+    if (await bcrypt.compare(newPassword, user.password)) {
+      return res.status(400).json({ message: "New password must be different from old password" });
+    }
+    user.lastPasswordChange = new Date()
     user.password = await bcrypt.hash(password, 10);
     user.resetToken = user.resetExpires = null;
     await user.save();
+
+    // ลบ ResetLink
+    await ResetLink.deleteOne({ token });
+    await sendEmail(user.email, {
+      subject: "🔐 Password Changed",
+      text: `รหัสผ่านของคุณถูกเปลี่ยนเมื่อ ${new Date().toLocaleString()}\nถ้าไม่ใช่คุณ → รีเซ็ตด่วน!`,
+    });
     res.json({ message: "Password updated" });
   } catch {
-    res.status(400).json({ error: "Invalid/reset token expired" });
+    if (!user) return res.status(400).json({ error: "User not found" });
+    if (user.resetToken !== token) return res.status(400).json({ error: "Invalid token" });
+    if (user.resetExpires < Date.now()) return res.status(400).json({ error: "Token expired" });
   }
 });
 router.post("/change-password", requireAuth, async (req, res) => {
