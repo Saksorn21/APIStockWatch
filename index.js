@@ -36,5 +36,12 @@ app.get("/auth/google/callback", passport.authenticate("google",{session:false,f
   res.cookie("token",token,{httpOnly:true,secure:true,sameSite:"lax",maxAge:3600000});
   res.redirect(process.env.FRONTEND_URL);
 });
+app.use((err, req, res, next) => {
+  console.error("🔥 Server error:", err.stack);
+  res.status(500).json({ message: "Internal Server Error" });
+});
+app.use((req, res) => {
+  res.status(404).json({ message: "API not found" });
+});
 
-app.listen(PORT, ()=> console.log("API ready at Port" + PORT));
+app.listen(PORT, ()=> console.log("📈 API ready at Port" + PORT));

@@ -3,17 +3,71 @@ import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
 import { User } from "./models/User.js";
 import { sendOTP,generateOTP, resetOTP , sendReset } from "./mail.js";
-
+import { requireAuth, requireAdmin, validateBody, otpLimiter } from "./middlewares/index.js";
 const router = express.Router();
-router.get("/me", (req, res) => {
-  console.log("🔥 [GET] /me hit"); // Log นี้จะช่วย debug
+router.get('/users', async (req, res) => {
+  const search = req.query.search;
+
+  let query = {};
+  if (search) {
+    query = {
+      $or: [
+        { email: { $regex: search, $options: 'i' } },
+        { username: { $regex: search, $options: 'i' } }
+      ]
+    };
+  }
+
+  try {
+    const users = await User.find(query);
+    res.json(users);
+  } catch (err) {
+    res.status(500).json({ message: 'Server Error' });
+  }
+});
+router.delete("/delete-me", async (req, res) => {
   const token = req.cookies.token;
   if (!token) return res.status(401).json({ message: "Unauthorized" });
 
   try {
-    const user = jwt.verify(token, process.env.JWT_SECRET);
-    console.log("User verified:", user);
-    res.json({ user }); // ✅ ต้องมี response กลับ
+    const decoded = jwt.verify(token, process.env.JWT_SECRET);
+    await User.findByIdAndDelete(decoded.id);
+    res.clearCookie("token");
+    res.json({ message: "Account deleted" });
+  } catch (err) {
+    res.status(500).json({ message: "Server Error" });
+  }
+});
+router.delete("/admin/delete/:id", requireAdmin, async (req, res) => {
+  await User.findByIdAndDelete(req.params.id);
+  res.json({ message: "User deleted by admin" });
+});
+router.patch("/admin/update-role/:id", requireAdmin, async (req, res) => {
+  const { role } = req.body;
+  if (!['user', 'admin'].includes(role)) {
+    return res.status(400).json({ message: "Invalid role" });
+  }
+
+  const updatedUser = await User.findByIdAndUpdate(
+    req.params.id,
+    { role },
+    { new: true }
+  );
+  res.json({ message: "Role updated", user: updatedUser });
+});
+
+router.get("/me", async (req, res) => {
+  console.log("🔥 [GET] /me hit");
+  const token = req.cookies.token;
+  if (!token) return res.status(401).json({ message: "Unauthorized" });
+
+  try {
+    const decoded = jwt.verify(token, process.env.JWT_SECRET);
+    const user = await User.findById(decoded.id).select("-password -otp -otpExpires"); // ไม่ส่งข้อมูลลับ
+
+    if (!user) return res.status(404).json({ message: "User not found" });
+
+    res.json({ user }); // ส่งข้อมูลจริง เช่น email, username
   } catch (err) {
     res.status(401).json({ message: "Invalid token" });
   }
